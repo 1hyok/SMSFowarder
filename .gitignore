@@ -8,3 +8,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Python bytecode cache (.claude 훅 실행 시 생성)
+__pycache__/
+*.pyc
