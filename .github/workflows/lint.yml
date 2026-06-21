@@ -25,7 +25,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review # PR 리뷰 댓글로 표시
-          android: true # Android 스타일 가이드 준수
+          android: false # 코드 스타일은 .editorconfig(ktlint_official)로 고정
           fail_on_error: true # 에러 발견 시 빌드 실패
           level: warning # Warning 이상은 댓글로 표시
           ktlint_version: "1.8.0" # 로컬(libs.versions.toml)과 버전 통일
