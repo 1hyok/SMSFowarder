@@ -1,0 +1,77 @@
+name: Static Analysis (Reviewdog)
+
+# 참고: 이 앱은 Kakao/Google 로그인·Firebase 를 안 쓰므로 원본의 "Verify required secrets" /
+# "Decode google-services.json" 스텝은 제거했다. ktlint 는 ScaCap/action-ktlint 가 gradle 플러그인
+# 없이 독립 실행하므로 그대로 동작한다(버전 1.8.0 핀).
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ktlint:
+    name: Check Code Quality (Ktlint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v4
+
+      - name: Run Ktlint
+        uses: ScaCap/action-ktlint@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review # PR 리뷰 댓글로 표시
+          android: true # Android 스타일 가이드 준수
+          fail_on_error: true # 에러 발견 시 빌드 실패
+          level: warning # Warning 이상은 댓글로 표시
+          ktlint_version: "1.8.0" # 로컬(libs.versions.toml)과 버전 통일
+
+  android-lint:
+    name: Check Project Issues (Android Lint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Run Android Lint
+        run: ./gradlew lintDebug --continue --parallel
+
+      # 모듈별 lint XML 을 한 파일로 합쳐 Reviewdog 가 위반을 PR 인라인 코멘트로 띄우도록 한다.
+      # (단일 :app 모듈이라도 동작 — find 가 :app 의 XML 하나를 잡는다.)
+      - name: Merge module lint XMLs into one
+        if: always()
+        run: |
+          set -e
+          out=app/build/reports/lint-results-merged.xml
+          mkdir -p app/build/reports
+          {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'
+            echo '<issues format="6" by="lint" client="gradle" type="baseline" name="merged">'
+            find . -path '*/build/reports/lint-results-debug.xml' -print | while read -r xml; do
+              xmllint --xpath '//issue' "$xml" 2>/dev/null || true
+            done
+            echo '</issues>'
+          } > "$out"
+          modules=$(find . -path '*/build/reports/lint-results-debug.xml' | wc -l)
+          issues=$(grep -c '<issue ' "$out" || echo 0)
+          echo "merged $issues issues from $modules modules → $out"
+
+      - name: Report Android Lint (Reviewdog)
+        if: always()
+        uses: dvdandroid/action-android-lint@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: warning
+          lint_xml_file: app/build/reports/lint-results-merged.xml

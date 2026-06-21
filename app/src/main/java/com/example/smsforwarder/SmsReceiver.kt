@@ -8,8 +8,10 @@ import android.telephony.SmsManager
 import android.util.Log
 
 class SmsReceiver : BroadcastReceiver() {
-
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
@@ -27,15 +29,15 @@ class SmsReceiver : BroadcastReceiver() {
         val hasKeyword = keywords.any { lowerMessage.contains(it.lowercase()) }
 
         if (hasKeyword) {
-            sendSms(context, forwardNumber, "📱$messageBody")  // context 전달
+            sendSms(context, forwardNumber, "📱$messageBody") // context 전달
         }
     }
 
     private fun sendSms(
         context: Context,
         phoneNumber: String,
-        message: String
-    ) {  // context 매개변수 추가
+        message: String,
+    ) { // context 매개변수 추가
         try {
             val smsManager =
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -49,7 +51,11 @@ class SmsReceiver : BroadcastReceiver() {
                 smsManager.sendTextMessage(phoneNumber, null, message, null, null)
             } else {
                 smsManager.sendMultipartTextMessage(
-                    phoneNumber, null, smsManager.divideMessage(message), null, null
+                    phoneNumber,
+                    null,
+                    smsManager.divideMessage(message),
+                    null,
+                    null,
                 )
             }
         } catch (e: Exception) {

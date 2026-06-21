@@ -1,0 +1,83 @@
+name: Auto-close referenced issues on PR merge
+
+# GitHub 의 기본 자동 close 는 default branch 머지 시에만 발동.
+# 본 repo 의 stack PR 워크플로 (feat/A → feat/B → develop) 에서는 closes #N 키워드가 있어도
+# 자동 close 미발동 → 매 PR 머지마다 수동 close 부담.
+#
+# 본 워크플로는 base 무관하게 PR merged 시점에 close 키워드를 파싱해 referenced issue 를 close.
+# default branch 머지 시 GitHub 가 이미 close 처리한 경우 state 가드로 중복 회피.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  close-referenced:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close issues referenced by close keywords
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const text = `${pr.title}\n\n${pr.body || ''}`;
+
+            // GitHub 공식 close keyword: close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved.
+            // 형식: <keyword> [<owner>/<repo>]#<N>.
+            // https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue
+            const regex = /\b(?:close[ds]?|fix(?:e[ds])?|resolve[ds]?)\s+(?:([\w.-]+\/[\w.-]+))?#(\d+)/gi;
+
+            const seen = new Set();
+            const closed = [];
+            const skipped = [];
+            let match;
+
+            while ((match = regex.exec(text)) !== null) {
+              const repoFull = match[1] || `${context.repo.owner}/${context.repo.repo}`;
+              const [owner, repo] = repoFull.split('/');
+              const num = parseInt(match[2], 10);
+              const key = `${owner}/${repo}#${num}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  owner, repo, issue_number: num,
+                });
+
+                // PR 자기 자신 또는 다른 PR 참조 — close 대상 아님
+                if (issue.pull_request) {
+                  skipped.push(`${key} (is a PR)`);
+                  continue;
+                }
+                // 이미 close — default branch 머지로 GitHub 가 이미 처리한 경우 등
+                if (issue.state !== 'open') {
+                  skipped.push(`${key} (already ${issue.state})`);
+                  continue;
+                }
+
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: num,
+                  body: `Auto-closed by merge of #${pr.number} into \`${pr.base.ref}\`.`,
+                });
+                await github.rest.issues.update({
+                  owner, repo, issue_number: num,
+                  state: 'closed',
+                  state_reason: 'completed',
+                });
+                closed.push(key);
+              } catch (err) {
+                core.warning(`Failed to close ${key}: ${err.message}`);
+              }
+            }
+
+            core.summary
+              .addHeading('Auto-close summary', 3)
+              .addRaw(`Closed: ${closed.length ? closed.join(', ') : '(none)'}`).addBreak()
+              .addRaw(`Skipped: ${skipped.length ? skipped.join(', ') : '(none)'}`)
+              .write();

@@ -1,0 +1,21 @@
+name: Review Assign
+
+# 1인 프로젝트라 reviewers 자동요청은 제거하고, PR 작성자를 assignee 로만 자동 지정한다.
+# (협업자가 생기면 reviewers: handle1, handle2 줄을 with: 아래에 추가하면 된다.)
+
+on:
+  pull_request:
+    types: [ opened, ready_for_review ]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hkusu/review-assign-action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          assignees: ${{ github.actor }}

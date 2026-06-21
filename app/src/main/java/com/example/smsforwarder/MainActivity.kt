@@ -46,14 +46,13 @@ import androidx.core.content.ContextCompat
 import com.example.smsforwarder.ui.theme.SMSForwarderTheme
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             SMSForwarderTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     SmsForwarderApp()
                 }
@@ -71,14 +70,15 @@ fun SmsForwarderApp() {
     var keywords by remember { mutableStateOf(emptyList<String>()) }
     var hasPermissions by remember { mutableStateOf(false) }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        hasPermissions = permissions.values.all { it }
-        if (!hasPermissions) {
-            Toast.makeText(context, "SMS 권한 필요", Toast.LENGTH_SHORT).show()
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions(),
+        ) { permissions ->
+            hasPermissions = permissions.values.all { it }
+            if (!hasPermissions) {
+                Toast.makeText(context, "SMS 권한 필요", Toast.LENGTH_SHORT).show()
+            }
         }
-    }
 
     // 초기 설정 로드
     LaunchedEffect(Unit) {
@@ -92,37 +92,41 @@ fun SmsForwarderApp() {
                 arrayOf(
                     Manifest.permission.RECEIVE_SMS,
                     Manifest.permission.READ_SMS,
-                    Manifest.permission.SEND_SMS
-                )
+                    Manifest.permission.SEND_SMS,
+                ),
             )
         }
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
             text = "SMS 자동전달",
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
+            modifier = Modifier.align(Alignment.CenterHorizontally),
         )
 
         // 권한 상태
         Card(
-            colors = CardDefaults.cardColors(
-                containerColor = if (hasPermissions)
-                    MaterialTheme.colorScheme.primaryContainer
-                else
-                    MaterialTheme.colorScheme.errorContainer
-            )
+            colors =
+                CardDefaults.cardColors(
+                    containerColor =
+                        if (hasPermissions) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.errorContainer
+                        },
+                ),
         ) {
             Text(
                 text = if (hasPermissions) "✅ 권한 OK" else "❌ 권한 필요",
-                modifier = Modifier.padding(12.dp)
+                modifier = Modifier.padding(12.dp),
             )
         }
 
@@ -137,7 +141,7 @@ fun SmsForwarderApp() {
                     placeholder = { Text("01012345678") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(
@@ -145,7 +149,7 @@ fun SmsForwarderApp() {
                         saveForwardNumber(context, forwardNumber.trim())
                         Toast.makeText(context, "저장완료", Toast.LENGTH_SHORT).show()
                     },
-                    modifier = Modifier.align(Alignment.End)
+                    modifier = Modifier.align(Alignment.End),
                 ) {
                     Text("저장")
                 }
@@ -160,14 +164,14 @@ fun SmsForwarderApp() {
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     OutlinedTextField(
                         value = newKeyword,
                         onValueChange = { newKeyword = it },
                         placeholder = { Text("키워드 입력") },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        singleLine = true,
                     )
                     Button(
                         onClick = {
@@ -179,7 +183,7 @@ fun SmsForwarderApp() {
                                 newKeyword = ""
                                 Toast.makeText(context, "추가완료", Toast.LENGTH_SHORT).show()
                             }
-                        }
+                        },
                     ) {
                         Text("추가")
                     }
@@ -195,13 +199,13 @@ fun SmsForwarderApp() {
                     Spacer(modifier = Modifier.height(8.dp))
 
                     LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         items(keywords) { keyword ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(text = keyword)
                                 TextButton(
@@ -210,7 +214,7 @@ fun SmsForwarderApp() {
                                         keywords = updated
                                         saveKeywords(context, updated)
                                         Toast.makeText(context, "삭제완료", Toast.LENGTH_SHORT).show()
-                                    }
+                                    },
                                 ) {
                                     Text("×", color = MaterialTheme.colorScheme.error)
                                 }
@@ -223,25 +227,32 @@ fun SmsForwarderApp() {
     }
 }
 
-private fun checkPermissions(context: Context): Boolean {
-    return arrayOf(
+private fun checkPermissions(context: Context): Boolean =
+    arrayOf(
         Manifest.permission.RECEIVE_SMS,
         Manifest.permission.READ_SMS,
-        Manifest.permission.SEND_SMS
+        Manifest.permission.SEND_SMS,
     ).all {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
-}
 
-private fun saveForwardNumber(context: Context, number: String) {
-    context.getSharedPreferences("sms_forwarder_prefs", Context.MODE_PRIVATE)
+private fun saveForwardNumber(
+    context: Context,
+    number: String,
+) {
+    context
+        .getSharedPreferences("sms_forwarder_prefs", Context.MODE_PRIVATE)
         .edit()
         .putString("forward_number", number)
         .apply()
 }
 
-private fun saveKeywords(context: Context, keywords: List<String>) {
-    context.getSharedPreferences("sms_forwarder_prefs", Context.MODE_PRIVATE)
+private fun saveKeywords(
+    context: Context,
+    keywords: List<String>,
+) {
+    context
+        .getSharedPreferences("sms_forwarder_prefs", Context.MODE_PRIVATE)
         .edit()
         .putStringSet("keywords", keywords.toSet())
         .apply()

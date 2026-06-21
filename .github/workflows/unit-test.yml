@@ -1,0 +1,43 @@
+name: Unit Test
+
+# PR 대상 master 일 때 :app 모듈의 JVM unit test (./gradlew testDebugUnitTest) 실행.
+# lint.yml 과 setup 이 거의 동일하지만 분리 — lint 실패가 test 결과를 가리지 않도록 fail-fast 독립.
+#
+# 참고: 이 앱은 Kakao/Google 로그인·Firebase 를 안 쓰므로 원본의 "Verify required secrets" /
+# "Decode google-services.json" 스텝은 제거했다. 그 기능을 추가하면 secret 검증 스텝도 함께 복원할 것.
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-test:
+    name: Run Unit Tests (testDebugUnitTest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --continue --parallel
+
+      # 실패한 테스트의 HTML/XML 리포트를 PR artifact 로 보존 — CI 로그에서 stack trace 추적이 빠름.
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            **/build/reports/tests/testDebugUnitTest
+            **/build/test-results/testDebugUnitTest
+          retention-days: 7
