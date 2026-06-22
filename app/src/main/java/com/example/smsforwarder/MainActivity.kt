@@ -2,8 +2,12 @@ package com.example.smsforwarder
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
+import android.telephony.PhoneNumberUtils
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -30,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,11 +43,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.smsforwarder.ui.theme.SMSForwarderTheme
 
 class MainActivity : ComponentActivity() {
@@ -88,14 +96,21 @@ fun SmsForwarderApp() {
 
         hasPermissions = checkPermissions(context)
         if (!hasPermissions) {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.RECEIVE_SMS,
-                    Manifest.permission.READ_SMS,
-                    Manifest.permission.SEND_SMS,
-                ),
-            )
+            permissionLauncher.launch(SMS_PERMISSIONS)
         }
+    }
+
+    // 설정 등에서 권한을 바꾸고 돌아오면 재확인
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    hasPermissions = checkPermissions(context)
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Column(
@@ -124,10 +139,29 @@ fun SmsForwarderApp() {
                         },
                 ),
         ) {
-            Text(
-                text = if (hasPermissions) "✅ 권한 OK" else "❌ 권한 필요",
-                modifier = Modifier.padding(12.dp),
-            )
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(text = if (hasPermissions) "✅ 권한 OK" else "❌ 권한 필요")
+                if (!hasPermissions) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { permissionLauncher.launch(SMS_PERMISSIONS) }) {
+                            Text("권한 요청")
+                        }
+                        TextButton(
+                            onClick = {
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.fromParts("package", context.packageName, null),
+                                    ),
+                                )
+                            },
+                        ) {
+                            Text("설정 열기")
+                        }
+                    }
+                }
+            }
         }
 
         // 전화번호 설정
@@ -146,8 +180,14 @@ fun SmsForwarderApp() {
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(
                     onClick = {
-                        saveForwardNumber(context, forwardNumber.trim())
-                        Toast.makeText(context, "저장완료", Toast.LENGTH_SHORT).show()
+                        val trimmed = forwardNumber.trim()
+                        if (!PhoneNumberUtils.isWellFormedSmsAddress(trimmed)) {
+                            Toast.makeText(context, "올바른 전화번호를 입력하세요", Toast.LENGTH_SHORT).show()
+                        } else {
+                            forwardNumber = trimmed
+                            saveForwardNumber(context, trimmed)
+                            Toast.makeText(context, "저장완료", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     modifier = Modifier.align(Alignment.End),
                 ) {
@@ -227,12 +267,14 @@ fun SmsForwarderApp() {
     }
 }
 
-private fun checkPermissions(context: Context): Boolean =
+private val SMS_PERMISSIONS =
     arrayOf(
         Manifest.permission.RECEIVE_SMS,
-        Manifest.permission.READ_SMS,
         Manifest.permission.SEND_SMS,
-    ).all {
+    )
+
+private fun checkPermissions(context: Context): Boolean =
+    SMS_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
 
