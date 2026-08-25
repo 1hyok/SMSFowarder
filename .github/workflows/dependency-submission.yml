@@ -1,0 +1,78 @@
+name: Gradle Dependency Submission
+
+# Trusted master pushes submit directly. Pull requests only create an artifact;
+# the default-branch workflow_run bridge submits it without executing PR code.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: gradle-dependency-submission-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  submit-default-branch:
+    if: github.event_name == 'push'
+    name: Submit trusted master dependency graph
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GITHUB_DEPENDENCY_GRAPH_JOB_CORRELATOR: smsforwarder-gradle-dependency-graph
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Generate and submit dependency graph
+        uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          additional-arguments: --no-configuration-cache --stacktrace
+          cache-provider: basic
+          cache-read-only: true
+          dependency-graph: generate-and-submit
+          dependency-graph-continue-on-failure: false
+          validate-wrappers: true
+
+  generate-pr-snapshot:
+    if: github.event_name == 'pull_request'
+    name: Generate PR dependency graph
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GITHUB_DEPENDENCY_GRAPH_JOB_CORRELATOR: smsforwarder-gradle-dependency-graph
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Generate dependency graph artifact
+        uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          additional-arguments: --no-configuration-cache --stacktrace
+          artifact-retention-days: 1
+          cache-provider: basic
+          cache-read-only: true
+          dependency-graph: generate-and-upload
+          dependency-graph-continue-on-failure: false
+          validate-wrappers: true

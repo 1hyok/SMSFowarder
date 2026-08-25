@@ -1,0 +1,58 @@
+name: PR Validation
+
+# Pull request 검증의 유일한 진입점이다. 개별 검증은 reusable workflow로만
+# 호출하고 ci-gate가 모든 결과를 하나의 안정적인 required context로 집계한다.
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  static-analysis:
+    name: Static Analysis
+    uses: ./.github/workflows/lint.yml
+
+  unit-test:
+    name: Unit Test
+    uses: ./.github/workflows/unit-test.yml
+
+  repository-quality:
+    name: Repository Quality
+    uses: ./.github/workflows/repository-quality.yml
+
+  mock-cleanup:
+    name: Mock Cleanup
+    uses: ./.github/workflows/mock-cleanup-check.yml
+
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs: [static-analysis, unit-test, repository-quality, mock-cleanup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every validation job to have succeeded
+        env:
+          VALIDATION_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+
+          failures=$(printf '%s' "$VALIDATION_RESULTS" \
+            | jq -r 'to_entries[] | select(.value.result != "success") | "\(.key) = \(.value.result)"')
+
+          if [ -n "$failures" ]; then
+            while IFS= read -r failure; do
+              echo "::error::PR validation failed — $failure"
+            done <<< "$failures"
+            exit 1
+          fi
+
+          printf '%s' "$VALIDATION_RESULTS" \
+            | jq -r 'to_entries[] | "\(.key) = \(.value.result)"'

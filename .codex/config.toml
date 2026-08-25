@@ -1,0 +1,9 @@
+web_search = "live"
+model_reasoning_summary = "auto"
+
+[mcp_servers.mobile]
+command = "npx"
+args = [
+    "-y",
+    "claude-in-mobile@3.8.1",
+]

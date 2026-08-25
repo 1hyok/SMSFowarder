@@ -1,0 +1,41 @@
+name: Set up release build configuration
+description: Validate release credentials and materialize private files outside the workspace
+
+inputs:
+  release-store-file-b64:
+    description: Base64-encoded Android release keystore
+    required: true
+  release-store-password:
+    description: Android release keystore password
+    required: true
+  release-key-alias:
+    description: Android release key alias
+    required: true
+  release-key-password:
+    description: Android release key password
+    required: true
+  firebase-service-account-json:
+    description: Firebase service account JSON
+    required: true
+
+outputs:
+  keystore-path:
+    description: Materialized release keystore path
+    value: ${{ steps.materialize.outputs.keystore-path }}
+  firebase-credentials-path:
+    description: Materialized Firebase credential path
+    value: ${{ steps.materialize.outputs.firebase-credentials-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate and materialize private release files
+      id: materialize
+      shell: bash
+      env:
+        RELEASE_STORE_FILE_B64: ${{ inputs.release-store-file-b64 }}
+        RELEASE_STORE_PASSWORD: ${{ inputs.release-store-password }}
+        RELEASE_KEY_ALIAS: ${{ inputs.release-key-alias }}
+        RELEASE_KEY_PASSWORD: ${{ inputs.release-key-password }}
+        FIREBASE_SERVICE_ACCOUNT_JSON: ${{ inputs.firebase-service-account-json }}
+      run: bash "$GITHUB_ACTION_PATH/setup-release-config.sh"

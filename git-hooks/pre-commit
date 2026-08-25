@@ -1,0 +1,105 @@
+#!/bin/sh
+# SMSForwarder: pre-commit hook.
+# Install once: ./gradlew installGitHooks
+#
+# Staged Kotlin files are checked with ktlint 1.8.0, matching the Gradle task used by CI.
+# Fully staged files may be formatted and re-staged. Partially staged files are
+# checked from the index so unstaged hunks are never added to a commit.
+
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT" || exit 1
+
+STAGED_KT=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(kt|kts)$' || true)
+[ -z "$STAGED_KT" ] && exit 0
+
+KTLINT_VERSION="1.8.0"
+KTLINT_SHA256="a3fd620207d5c40da6ca789b95e7f823c54e854b7fade7f613e91096a3706d75"
+HOOKS_DIR="$(cd "$(git rev-parse --git-common-dir)/hooks" && pwd)"
+KTLINT="$HOOKS_DIR/.ktlint-${KTLINT_VERSION}"
+
+ktlint_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        echo "Neither sha256sum nor shasum is available" >&2
+        return 1
+    fi
+}
+
+if [ -f "$KTLINT" ] && [ "$(ktlint_sha256 "$KTLINT")" != "$KTLINT_SHA256" ]; then
+    echo "ktlint ${KTLINT_VERSION} checksum mismatch: $KTLINT" >&2
+    exit 1
+fi
+
+if [ ! -x "$KTLINT" ]; then
+    echo "Downloading ktlint ${KTLINT_VERSION}..."
+    KTLINT_TEMP=$(mktemp "${KTLINT}.tmp.XXXXXX")
+    trap 'rm -f "$KTLINT_TEMP"' EXIT HUP INT TERM
+    curl -fsSLo "$KTLINT_TEMP" "https://github.com/ktlint/ktlint/releases/download/${KTLINT_VERSION}/ktlint"
+    if [ "$(ktlint_sha256 "$KTLINT_TEMP")" != "$KTLINT_SHA256" ]; then
+        echo "Downloaded ktlint ${KTLINT_VERSION} failed checksum verification" >&2
+        exit 1
+    fi
+    mv "$KTLINT_TEMP" "$KTLINT"
+    chmod +x "$KTLINT"
+    trap - EXIT HUP INT TERM
+fi
+
+FULLY_STAGED=$(
+    echo "$STAGED_KT" | while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        if git diff --quiet -- "$file"; then
+            printf '%s\n' "$file"
+        fi
+        :
+    done
+)
+PARTIALLY_STAGED=$(
+    echo "$STAGED_KT" | while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        if ! git diff --quiet -- "$file"; then
+            printf '%s\n' "$file"
+        fi
+        :
+    done
+)
+
+if [ -n "$FULLY_STAGED" ]; then
+    echo "Running ktlint --format on fully staged files..."
+    printf '%s\n' "$FULLY_STAGED" | tr '\n' '\0' | xargs -0 "$KTLINT" --format --relative
+    printf '%s\n' "$FULLY_STAGED" | while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        [ -f "$file" ] || continue
+        git add -- "$file"
+    done
+fi
+
+FAILED=0
+
+if [ -n "$FULLY_STAGED" ]; then
+    echo "Running ktlint check on fully staged files..."
+    if ! printf '%s\n' "$FULLY_STAGED" | tr '\n' '\0' | xargs -0 "$KTLINT" --relative; then
+        FAILED=1
+    fi
+fi
+
+if [ -n "$PARTIALLY_STAGED" ]; then
+    echo "Running ktlint check on partially staged content..."
+    if ! printf '%s\n' "$PARTIALLY_STAGED" | while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        git show ":$file" | "$KTLINT" --stdin --stdin-path="$file" --relative || exit 1
+    done; then
+        FAILED=1
+    fi
+fi
+
+if [ "$FAILED" -ne 0 ]; then
+    echo ""
+    echo "ktlint violations remain."
+    echo "Partially staged files are not auto-formatted to protect unstaged hunks."
+    exit 1
+fi

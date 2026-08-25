@@ -7,40 +7,37 @@ import android.provider.Telephony
 import android.telephony.SmsManager
 import android.util.Log
 
-class SmsReceiver : BroadcastReceiver() {
-    override fun onReceive(
+internal data class DecodedSmsMessage(
+    val body: String,
+    val sender: String?,
+)
+
+internal fun interface SmsMessageDecoder {
+    fun decode(intent: Intent): List<DecodedSmsMessage>
+}
+
+internal fun interface SmsSender {
+    fun send(
         context: Context,
-        intent: Intent,
-    ) {
-        if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+        phoneNumber: String,
+        message: String,
+    )
+}
 
-        val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
+private object AndroidSmsMessageDecoder : SmsMessageDecoder {
+    override fun decode(intent: Intent): List<DecodedSmsMessage> =
+        Telephony.Sms.Intents
+            .getMessagesFromIntent(intent)
+            ?.map { message ->
+                DecodedSmsMessage(
+                    body = message.messageBody.orEmpty(),
+                    sender = message.originatingAddress,
+                )
+            }.orEmpty()
+}
 
-        val sharedPref = context.getSharedPreferences("sms_forwarder_prefs", Context.MODE_PRIVATE)
-        val keywords = sharedPref.getStringSet("keywords", null)
-        val forwardNumber = sharedPref.getString("forward_number", null)
-
-        if (keywords.isNullOrEmpty() || forwardNumber.isNullOrBlank()) return
-
-        val messageBody = messages.joinToString("") { it.messageBody ?: "" }
-        if (messageBody.isEmpty()) return
-
-        // 루프 차단 1: 이미 전달된(마커가 붙은) 메시지는 재전달하지 않는다.
-        if (messageBody.startsWith(FORWARD_PREFIX)) return
-
-        // 루프 차단 2: 발신자가 전달 대상 번호 자신이면 되돌려보내지 않는다.
-        val sender = messages.firstOrNull()?.originatingAddress
-        if (sender != null && sameNumber(sender, forwardNumber)) return
-
-        val lowerMessage = messageBody.lowercase()
-        val hasKeyword = keywords.any { lowerMessage.contains(it.lowercase()) }
-
-        if (hasKeyword) {
-            sendSms(context, forwardNumber, "$FORWARD_PREFIX$messageBody")
-        }
-    }
-
-    private fun sendSms(
+private object AndroidSmsSender : SmsSender {
+    override fun send(
         context: Context,
         phoneNumber: String,
         message: String,
@@ -59,13 +56,14 @@ class SmsReceiver : BroadcastReceiver() {
                 return
             }
 
-            if (message.length <= 160) {
-                smsManager.sendTextMessage(phoneNumber, null, message, null, null)
+            val messageParts = smsManager.divideMessage(message)
+            if (messageParts.size == 1) {
+                smsManager.sendTextMessage(phoneNumber, null, messageParts.single(), null, null)
             } else {
                 smsManager.sendMultipartTextMessage(
                     phoneNumber,
                     null,
-                    smsManager.divideMessage(message),
+                    messageParts,
                     null,
                     null,
                 )
@@ -75,18 +73,36 @@ class SmsReceiver : BroadcastReceiver() {
         }
     }
 
-    companion object {
-        private const val TAG = "SmsReceiver"
-        private const val FORWARD_PREFIX = "📱"
+    private const val TAG = "SmsReceiver"
+}
 
-        // 전화번호 동등 비교 (PhoneNumberUtils.compare 는 deprecated). 숫자만 뽑아 끝 8자리로 비교.
-        private fun sameNumber(
-            a: String,
-            b: String,
-        ): Boolean {
-            val na = a.filter(Char::isDigit)
-            val nb = b.filter(Char::isDigit)
-            return na.isNotEmpty() && nb.isNotEmpty() && na.takeLast(8) == nb.takeLast(8)
+class SmsReceiver internal constructor(
+    private val messageDecoder: SmsMessageDecoder,
+    private val smsSender: SmsSender,
+) : BroadcastReceiver() {
+    constructor() : this(AndroidSmsMessageDecoder, AndroidSmsSender)
+
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
+        if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+
+        val messages = messageDecoder.decode(intent)
+        if (messages.isEmpty()) return
+
+        val sharedPref = context.getSharedPreferences("sms_forwarder_prefs", Context.MODE_PRIVATE)
+        val keywords = sharedPref.getStringSet("keywords", null)
+        val forwardNumber = sharedPref.getString("forward_number", null)
+
+        val messageBody = messages.joinToString("") { message -> message.body }
+        val sender = messages.first().sender
+        if (SmsForwardingPolicy.shouldForward(messageBody, sender, forwardNumber, keywords)) {
+            smsSender.send(
+                context = context,
+                phoneNumber = requireNotNull(forwardNumber),
+                message = "${SmsForwardingPolicy.FORWARD_PREFIX}$messageBody",
+            )
         }
     }
 }
