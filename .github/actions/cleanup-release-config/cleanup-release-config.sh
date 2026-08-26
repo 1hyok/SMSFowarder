@@ -15,5 +15,3 @@ remove_runner_temp_file() {
 }
 
 remove_runner_temp_file "${KEYSTORE_PATH:-$RUNNER_TEMP/sms-forwarder-release.jks}"
-remove_runner_temp_file \
-    "${FIREBASE_CREDENTIALS_PATH:-$RUNNER_TEMP/firebase-service-account.json}"

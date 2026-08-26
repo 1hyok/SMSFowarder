@@ -1,13 +1,9 @@
 name: Remove release build configuration
-description: Remove private files created by setup-release-config
+description: Remove the private keystore created by setup-release-config
 
 inputs:
   keystore-path:
     description: setup-release-config keystore-path output
-    required: false
-    default: ""
-  firebase-credentials-path:
-    description: setup-release-config firebase-credentials-path output
     required: false
     default: ""
 
@@ -18,5 +14,4 @@ runs:
       shell: bash
       env:
         KEYSTORE_PATH: ${{ inputs.keystore-path }}
-        FIREBASE_CREDENTIALS_PATH: ${{ inputs.firebase-credentials-path }}
       run: bash "$GITHUB_ACTION_PATH/cleanup-release-config.sh"

@@ -113,6 +113,26 @@ test("release credentials are reachable only from trusted master pushes", async 
     assert.match(source, /environment:\s*release-distribution/);
     assert.match(source, /FIREBASE_APP_DISTRIBUTION_ENABLED == 'true'/);
     assert.match(source, /persist-credentials:\s*false/);
+    assert.match(source, /id-token:\s*write/);
+    assert.match(
+        source,
+        /google-github-actions\/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093/,
+    );
+    assert.match(
+        source,
+        /workload_identity_provider:\s*projects\/805084536668\/locations\/global\/workloadIdentityPools\/github-actions\/providers\/smsforwarder/,
+    );
+    assert.match(
+        source,
+        /service_account:\s*github-app-distribution@smsforwarder-1hyok\.iam\.gserviceaccount\.com/,
+    );
+    assert.doesNotMatch(source, /FIREBASE_SERVICE_ACCOUNT_JSON|credentials_json:/);
+
+    const attestationIndex = source.indexOf("Attest the signed release APK");
+    const authenticationIndex = source.indexOf("Authenticate to Google Cloud");
+    const uploadIndex = source.indexOf("Upload the attested APK");
+    assert.ok(attestationIndex < authenticationIndex);
+    assert.ok(authenticationIndex < uploadIndex);
 });
 
 test("Dependabot updates Actions and Gradle without automatic merging", async () => {

@@ -13,11 +13,14 @@ receives production signing material, while the release job runs only through th
    - `RELEASE_STORE_PASSWORD`
    - `RELEASE_KEY_ALIAS`
    - `RELEASE_KEY_PASSWORD`
-   - `FIREBASE_SERVICE_ACCOUNT_JSON`
 4. Add `FIREBASE_APP_ID` as an Environment variable. Optionally set
    `FIREBASE_TESTER_GROUPS`; it defaults to `testers`.
-5. Add the repository variable `FIREBASE_APP_DISTRIBUTION_ENABLED=true`.
-6. Merge the next trusted change to `master` and confirm that the signed APK reaches
+5. Configure GitHub OIDC authentication through the repository-scoped Workload Identity
+   Provider and grant its principal `roles/iam.workloadIdentityUser` on the dedicated
+   App Distribution service account. The service account itself needs only
+   `roles/firebaseappdistro.admin` in the Firebase project.
+6. Add the repository variable `FIREBASE_APP_DISTRIBUTION_ENABLED=true`.
+7. Merge the next trusted change to `master` and confirm that the signed APK reaches
    only the intended Firebase app and tester group. Every later `master` push uses the
    same protected path.
 
@@ -30,6 +33,13 @@ Encode the keystore locally without printing it:
 base64 < release.jks | tr -d '\n'
 ```
 
-Never commit the keystore, service-account JSON, or decoded credentials. The workflow
-materializes them under `RUNNER_TEMP`, verifies the signed APK, attests that exact file,
-uploads it, and removes the private files even when the job fails.
+Never commit the keystore or decoded credentials. The workflow materializes the keystore
+under `RUNNER_TEMP`, verifies the signed APK, attests that exact file, exchanges the
+GitHub OIDC token for short-lived Google credentials just before upload, and removes the
+private files even when the job fails. No long-lived Google service-account key is stored
+in GitHub.
+
+The production provider is
+`projects/805084536668/locations/global/workloadIdentityPools/github-actions/providers/smsforwarder`.
+Admission is restricted to repository ID `1057845797` on `refs/heads/master`, and the
+service-account binding is restricted to that same immutable repository ID.

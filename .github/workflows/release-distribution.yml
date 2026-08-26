@@ -73,7 +73,6 @@ jobs:
           release-store-password: ${{ secrets.RELEASE_STORE_PASSWORD }}
           release-key-alias: ${{ secrets.RELEASE_KEY_ALIAS }}
           release-key-password: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          firebase-service-account-json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
       - name: Build and verify the signed release APK
         id: release-apk
@@ -111,11 +110,21 @@ jobs:
           subject-path: ${{ steps.release-apk.outputs.path }}
           show-summary: false
 
+      - name: Authenticate to Google Cloud without a service account key
+        id: google-auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: smsforwarder-1hyok
+          workload_identity_provider: projects/805084536668/locations/global/workloadIdentityPools/github-actions/providers/smsforwarder
+          service_account: github-app-distribution@smsforwarder-1hyok.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+
       - name: Upload the attested APK to Firebase App Distribution
         env:
           FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           FIREBASE_TESTER_GROUPS: ${{ vars.FIREBASE_TESTER_GROUPS || 'testers' }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.release-config.outputs.firebase-credentials-path }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.google-auth.outputs.credentials_file_path }}
           RELEASE_APK_PATH: ${{ steps.release-apk.outputs.path }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
@@ -148,4 +157,3 @@ jobs:
         uses: ./.github/actions/cleanup-release-config
         with:
           keystore-path: ${{ steps.release-config.outputs.keystore-path }}
-          firebase-credentials-path: ${{ steps.release-config.outputs.firebase-credentials-path }}
