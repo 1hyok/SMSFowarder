@@ -4,6 +4,7 @@
     <!-- SMS 관련 권한 -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- 전화 기능이 있는 기기에서만 설치 가능 -->
     <uses-feature
@@ -41,5 +42,11 @@
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>
         </receiver>
+
+        <!-- 앱이 만든 명시적 PendingIntent의 전송 결과만 수신 -->
+        <receiver
+            android:name=".SmsSendStatusReceiver"
+            android:enabled="true"
+            android:exported="false" />
     </application>
 </manifest>

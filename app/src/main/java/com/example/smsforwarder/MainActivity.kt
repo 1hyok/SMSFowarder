@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.telephony.PhoneNumberUtils
@@ -76,15 +77,19 @@ fun SmsForwarderApp() {
     var forwardNumber by remember { mutableStateOf("") }
     var newKeyword by remember { mutableStateOf("") }
     var keywords by remember { mutableStateOf(emptyList<String>()) }
-    var hasPermissions by remember { mutableStateOf(false) }
+    var hasSmsPermissions by remember { mutableStateOf(false) }
+    var hasFailureNotifications by remember { mutableStateOf(false) }
 
     val permissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestMultiplePermissions(),
-        ) { permissions ->
-            hasPermissions = permissions.values.all { it }
-            if (!hasPermissions) {
+        ) {
+            hasSmsPermissions = checkSmsPermissions(context)
+            hasFailureNotifications = ForwardingNotifier.notificationsEnabled(context)
+            if (!hasSmsPermissions) {
                 Toast.makeText(context, "SMS 권한 필요", Toast.LENGTH_SHORT).show()
+            } else if (!hasFailureNotifications) {
+                Toast.makeText(context, "전송 실패 알림이 꺼져 있습니다", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -94,9 +99,12 @@ fun SmsForwarderApp() {
         forwardNumber = sharedPref.getString("forward_number", "") ?: ""
         keywords = sharedPref.getStringSet("keywords", emptySet())?.toList() ?: emptyList()
 
-        hasPermissions = checkPermissions(context)
-        if (!hasPermissions) {
-            permissionLauncher.launch(SMS_PERMISSIONS)
+        ForwardingNotifier.ensureChannel(context)
+        hasSmsPermissions = checkSmsPermissions(context)
+        hasFailureNotifications = ForwardingNotifier.notificationsEnabled(context)
+        val missingPermissions = missingRuntimePermissions(context)
+        if (missingPermissions.isNotEmpty()) {
+            permissionLauncher.launch(missingPermissions)
         }
     }
 
@@ -106,7 +114,8 @@ fun SmsForwarderApp() {
         val observer =
             LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
-                    hasPermissions = checkPermissions(context)
+                    hasSmsPermissions = checkSmsPermissions(context)
+                    hasFailureNotifications = ForwardingNotifier.notificationsEnabled(context)
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -132,20 +141,42 @@ fun SmsForwarderApp() {
             colors =
                 CardDefaults.cardColors(
                     containerColor =
-                        if (hasPermissions) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.errorContainer
+                        when {
+                            !hasSmsPermissions -> MaterialTheme.colorScheme.errorContainer
+                            !hasFailureNotifications -> MaterialTheme.colorScheme.secondaryContainer
+                            else -> MaterialTheme.colorScheme.primaryContainer
                         },
                 ),
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text(text = if (hasPermissions) "✅ 권한 OK" else "❌ 권한 필요")
-                if (!hasPermissions) {
+                Text(
+                    text =
+                        if (hasSmsPermissions) {
+                            "✅ SMS 수신·발신 권한 OK"
+                        } else {
+                            "❌ SMS 수신·발신 권한 필요"
+                        },
+                )
+                Text(
+                    text =
+                        if (hasFailureNotifications) {
+                            "✅ 전송 실패 알림 ON"
+                        } else {
+                            "⚠️ 전송 실패 알림 OFF"
+                        },
+                )
+                if (!hasSmsPermissions || !hasFailureNotifications) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { permissionLauncher.launch(SMS_PERMISSIONS) }) {
-                            Text("권한 요청")
+                        val missingPermissions = missingRuntimePermissions(context)
+                        if (missingPermissions.isNotEmpty()) {
+                            Button(
+                                onClick = {
+                                    permissionLauncher.launch(missingPermissions)
+                                },
+                            ) {
+                                Text("권한 요청")
+                            }
                         }
                         TextButton(
                             onClick = {
@@ -167,7 +198,7 @@ fun SmsForwarderApp() {
         // 전화번호 설정
         Card {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text("전달번호", fontWeight = FontWeight.Bold)
+                Text("아버지 번호 (단일 전달 대상)", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = forwardNumber,
@@ -273,10 +304,28 @@ private val SMS_PERMISSIONS =
         Manifest.permission.SEND_SMS,
     )
 
-private fun checkPermissions(context: Context): Boolean =
+private fun checkSmsPermissions(context: Context): Boolean =
     SMS_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
+
+private fun missingRuntimePermissions(context: Context): Array<String> =
+    buildList {
+        SMS_PERMISSIONS
+            .filterTo(this) { permission ->
+                ContextCompat.checkSelfPermission(context, permission) !=
+                    PackageManager.PERMISSION_GRANTED
+            }
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }.toTypedArray()
 
 private fun saveForwardNumber(
     context: Context,

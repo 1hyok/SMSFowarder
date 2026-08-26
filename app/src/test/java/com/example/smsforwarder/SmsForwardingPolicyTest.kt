@@ -1,5 +1,6 @@
 package com.example.smsforwarder
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -49,6 +50,30 @@ class SmsForwardingPolicyTest {
             shouldForward(
                 messageBody = "${SmsForwardingPolicy.FORWARD_PREFIX}verification code",
                 keywords = setOf("code"),
+            ),
+        )
+        assertFalse(
+            shouldForward(
+                messageBody = "📱verification code",
+                keywords = setOf("code"),
+            ),
+        )
+    }
+
+    @Test
+    fun forwardedMessageIncludesSanitizedSenderAndOriginalBody() {
+        assertEquals(
+            "[FWD]\nFrom: 1588-0000 support\n인증번호는 123456입니다",
+            SmsForwardingPolicy.formatForwardedMessage(
+                messageBody = "인증번호는 123456입니다",
+                sender = "1588-0000\nsupport",
+            ),
+        )
+        assertEquals(
+            "[FWD]\nFrom: Unknown\ncode 123456",
+            SmsForwardingPolicy.formatForwardedMessage(
+                messageBody = "code 123456",
+                sender = null,
             ),
         )
     }

@@ -6,6 +6,12 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
+    <exclude
+        domain="sharedpref"
+        path="sms_forwarder_runtime.xml" />
+    <exclude
+        domain="sharedpref"
+        path="sms_forwarder_prefs.xml" />
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>
