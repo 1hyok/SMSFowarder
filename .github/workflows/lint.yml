@@ -1,77 +1,79 @@
-name: Static Analysis (Reviewdog)
+name: Static Analysis
 
-# 참고: 이 앱은 Kakao/Google 로그인·Firebase 를 안 쓰므로 원본의 "Verify required secrets" /
-# "Decode google-services.json" 스텝은 제거했다. ktlint 는 ScaCap/action-ktlint 가 gradle 플러그인
-# 없이 독립 실행하므로 그대로 동작한다(버전 1.8.0 핀).
-
+# PR 검증은 pr-validation.yml만 시작한다. 이 파일은 중복 체크를 만들지 않도록
+# reusable workflow로만 호출된다.
 on:
-  pull_request:
-    branches: [master]
+  workflow_call:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   ktlint:
     name: Check Code Quality (Ktlint)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Clone repo
-        uses: actions/checkout@v4
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle and validate wrapper
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+          validate-wrappers: true
 
       - name: Run Ktlint
-        uses: ScaCap/action-ktlint@master
+        run: ./gradlew :app:ktlintCheck --continue --parallel --build-cache
+
+      - name: Upload Ktlint reports on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review # PR 리뷰 댓글로 표시
-          android: false # 코드 스타일은 .editorconfig(ktlint_official)로 고정
-          fail_on_error: true # 에러 발견 시 빌드 실패
-          level: warning # Warning 이상은 댓글로 표시
-          ktlint_version: "1.8.0" # 로컬(libs.versions.toml)과 버전 통일
+          name: ktlint-reports
+          path: app/build/reports/ktlint/
+          if-no-files-found: warn
+          retention-days: 7
 
   android-lint:
     name: Check Project Issues (Android Lint)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Clone repo
-        uses: actions/checkout@v4
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
-          cache: 'gradle'
+
+      - name: Set up Gradle and validate wrapper
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+          validate-wrappers: true
 
       - name: Run Android Lint
-        run: ./gradlew lintDebug --continue --parallel
+        run: ./gradlew :app:lintDebug --continue --parallel --build-cache
 
-      # 모듈별 lint XML 을 한 파일로 합쳐 Reviewdog 가 위반을 PR 인라인 코멘트로 띄우도록 한다.
-      # (단일 :app 모듈이라도 동작 — find 가 :app 의 XML 하나를 잡는다.)
-      - name: Merge module lint XMLs into one
-        if: always()
-        run: |
-          set -e
-          out=app/build/reports/lint-results-merged.xml
-          mkdir -p app/build/reports
-          {
-            echo '<?xml version="1.0" encoding="UTF-8"?>'
-            echo '<issues format="6" by="lint" client="gradle" type="baseline" name="merged">'
-            find . -path '*/build/reports/lint-results-debug.xml' -print | while read -r xml; do
-              xmllint --xpath '//issue' "$xml" 2>/dev/null || true
-            done
-            echo '</issues>'
-          } > "$out"
-          modules=$(find . -path '*/build/reports/lint-results-debug.xml' | wc -l)
-          issues=$(grep -c '<issue ' "$out" || echo 0)
-          echo "merged $issues issues from $modules modules → $out"
-
-      - name: Report Android Lint (Reviewdog)
-        if: always()
-        uses: dvdandroid/action-android-lint@master
+      - name: Upload Android Lint reports on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          level: warning
-          lint_xml_file: app/build/reports/lint-results-merged.xml
+          name: android-lint-reports
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.xml
+            app/build/reports/lint-results-debug.txt
+          if-no-files-found: warn
+          retention-days: 7

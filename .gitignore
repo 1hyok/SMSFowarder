@@ -8,7 +8,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+gha-creds-*.json
 
-# Python bytecode cache (.claude 훅 실행 시 생성)
+# Python bytecode cache from local tooling
 __pycache__/
 *.pyc

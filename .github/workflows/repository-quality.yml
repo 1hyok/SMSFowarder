@@ -1,0 +1,48 @@
+name: Repository Quality
+
+on:
+  workflow_call:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-quality:
+    name: Repository Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_LINUX_AMD64_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          archive_path="${RUNNER_TEMP}/${archive}"
+          tool_directory="${RUNNER_TEMP}/actionlint-${ACTIONLINT_VERSION}"
+          mkdir -p "$tool_directory"
+
+          curl --fail --location --silent --show-error \
+            --output "$archive_path" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          printf '%s  %s\n' "$ACTIONLINT_LINUX_AMD64_SHA256" "$archive_path" \
+            | sha256sum --check --strict
+          tar -xzf "$archive_path" -C "$tool_directory"
+          printf '%s\n' "$tool_directory" >> "$GITHUB_PATH"
+
+      - name: Run repository quality checks
+        run: bash scripts/repository-quality.sh
+
+      - name: Verify failing fixtures
+        run: bash scripts/test-repository-quality.sh

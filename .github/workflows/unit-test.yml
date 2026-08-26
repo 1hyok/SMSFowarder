@@ -1,14 +1,9 @@
 name: Unit Test
 
-# PR 대상 master 일 때 :app 모듈의 JVM unit test (./gradlew testDebugUnitTest) 실행.
-# lint.yml 과 setup 이 거의 동일하지만 분리 — lint 실패가 test 결과를 가리지 않도록 fail-fast 독립.
-#
-# 참고: 이 앱은 Kakao/Google 로그인·Firebase 를 안 쓰므로 원본의 "Verify required secrets" /
-# "Decode google-services.json" 스텝은 제거했다. 그 기능을 추가하면 secret 검증 스텝도 함께 복원할 것.
-
+# PR 검증은 pr-validation.yml만 시작한다. 정책 스크립트 회귀, JVM unit test,
+# Kover XML 생성, androidTest 컴파일을 한 job에서 독립적으로 검증한다.
 on:
-  pull_request:
-    branches: [master]
+  workflow_call:
 
 permissions:
   contents: read
@@ -17,27 +12,53 @@ jobs:
   unit-test:
     name: Run Unit Tests (testDebugUnitTest)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Clone repo
-        uses: actions/checkout@v4
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run CI policy tests
+        run: node --test .github/scripts/*.test.mjs
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
-          cache: 'gradle'
 
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --continue --parallel
+      - name: Set up Gradle and validate wrapper
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+          validate-wrappers: true
 
-      # 실패한 테스트의 HTML/XML 리포트를 PR artifact 로 보존 — CI 로그에서 stack trace 추적이 빠름.
+      - name: Run unit tests, Kover report, and androidTest compile guard
+        run: >-
+          ./gradlew
+          :app:testDebugUnitTest
+          :app:koverXmlReportDebug
+          :app:compileDebugAndroidTestKotlin
+          --continue
+          --parallel
+          --build-cache
+
+      - name: Upload Kover coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kover-debug-coverage
+          path: app/build/reports/kover/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload test reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: unit-test-reports
           path: |
-            **/build/reports/tests/testDebugUnitTest
-            **/build/test-results/testDebugUnitTest
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: warn
           retention-days: 7

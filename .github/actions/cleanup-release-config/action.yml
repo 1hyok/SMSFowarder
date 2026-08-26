@@ -1,0 +1,17 @@
+name: Remove release build configuration
+description: Remove the private keystore created by setup-release-config
+
+inputs:
+  keystore-path:
+    description: setup-release-config keystore-path output
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Remove private release files
+      shell: bash
+      env:
+        KEYSTORE_PATH: ${{ inputs.keystore-path }}
+      run: bash "$GITHUB_ACTION_PATH/cleanup-release-config.sh"

@@ -3,7 +3,6 @@
 
     <!-- SMS 관련 권한 -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
-    <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
 
     <!-- 전화 기능이 있는 기기에서만 설치 가능 -->
@@ -36,7 +35,8 @@
         <receiver
             android:name=".SmsReceiver"
             android:enabled="true"
-            android:exported="true">
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
             <intent-filter android:priority="1000">
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>

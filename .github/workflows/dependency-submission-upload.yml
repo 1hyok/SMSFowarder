@@ -1,0 +1,27 @@
+name: Submit PR Dependency Graph
+
+on:
+  workflow_run:
+    workflows: [Gradle Dependency Submission]
+    types: [completed]
+
+concurrency:
+  group: submit-pr-dependency-graph-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  submit-pr-snapshot:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    name: Submit generated PR dependency graph
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and submit dependency graph
+        uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true
+          dependency-graph: download-and-submit
+          dependency-graph-continue-on-failure: false

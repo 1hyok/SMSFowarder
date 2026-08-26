@@ -1,0 +1,60 @@
+name: Android Managed Device Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 18 * * 2,5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-managed-device-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  managed-device:
+    name: Pixel 2 API 30 androidTest
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle and validate wrapper
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+          validate-wrappers: true
+
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0660", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run managed-device androidTest
+        run: |
+          ./gradlew pixel2Api30DebugAndroidTest \
+            -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect \
+            --stacktrace
+
+      - name: Upload androidTest reports and failure evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-managed-device-results-${{ github.run_attempt }}
+          path: |
+            app/build/reports/androidTests/managedDevice/
+            app/build/outputs/androidTest-results/managedDevice/
+            app/build/outputs/managed_device_android_test_additional_output/
+          if-no-files-found: warn
+          retention-days: 7
