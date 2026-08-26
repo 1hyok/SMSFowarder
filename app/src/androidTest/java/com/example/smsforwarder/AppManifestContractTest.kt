@@ -24,11 +24,19 @@ class AppManifestContractTest {
 
         assertTrue(requestedPermissions.contains(Manifest.permission.RECEIVE_SMS))
         assertTrue(requestedPermissions.contains(Manifest.permission.SEND_SMS))
+        assertTrue(requestedPermissions.contains(Manifest.permission.POST_NOTIFICATIONS))
 
         val receiver = packageInfo.receivers.orEmpty().single { it.name == SmsReceiver::class.java.name }
         assertTrue(receiver.enabled)
         assertTrue(receiver.exported)
         assertEquals(Manifest.permission.BROADCAST_SMS, receiver.permission)
+
+        val statusReceiver =
+            packageInfo.receivers.orEmpty().single {
+                it.name == SmsSendStatusReceiver::class.java.name
+            }
+        assertTrue(statusReceiver.enabled)
+        assertTrue(!statusReceiver.exported)
     }
 
     @Test
