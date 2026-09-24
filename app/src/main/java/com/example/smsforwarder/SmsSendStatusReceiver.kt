@@ -127,6 +127,9 @@ internal object ForwardingNotifier {
     private const val STORAGE_FAILURE_NOTIFICATION_ID = 10_003
     private const val TAG = "ForwardingNotifier"
 
+    // SmsManager 결과 코드와 겹치지 않는 앱 내부 값
+    const val RESULT_PERMISSION_DENIED = -1_000
+
     fun ensureChannel(context: Context) {
         val notificationManager = context.getSystemService(NotificationManager::class.java)
         notificationManager.createNotificationChannel(
@@ -168,6 +171,7 @@ internal object ForwardingNotifier {
                 SmsManager.RESULT_ERROR_RADIO_OFF -> "비행기 모드 또는 통신 기능이 꺼져 있습니다."
                 SmsManager.RESULT_ERROR_NO_SERVICE -> "통신 서비스에 연결되지 않았습니다."
                 SmsManager.RESULT_ERROR_LIMIT_EXCEEDED -> "기기의 SMS 발송 한도를 초과했습니다."
+                RESULT_PERMISSION_DENIED -> "SMS 보내기 권한이 꺼져 있습니다. 앱 권한에서 SMS를 허용하세요."
                 else -> "SIM과 통신 상태를 확인하세요."
             }
         notify(

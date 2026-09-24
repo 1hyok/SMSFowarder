@@ -1,13 +1,16 @@
 package com.example.smsforwarder
 
+import android.Manifest
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Telephony
 import android.telephony.SmsManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 
 internal data class DecodedSmsMessage(
     val body: String,
@@ -46,6 +49,12 @@ private object AndroidSmsSender : SmsSender {
         message: String,
         attemptId: String,
     ) {
+        if (!hasSendSmsPermission(context)) {
+            Log.e(TAG, "SEND_SMS 권한 없음")
+            reportImmediateFailure(context, attemptId, ForwardingNotifier.RESULT_PERMISSION_DENIED)
+            return
+        }
+
         try {
             val smsManager =
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -89,6 +98,9 @@ private object AndroidSmsSender : SmsSender {
                     null,
                 )
             }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "전송 권한 거부", e)
+            reportImmediateFailure(context, attemptId, ForwardingNotifier.RESULT_PERMISSION_DENIED)
         } catch (e: Exception) {
             Log.e(TAG, "전송 실패", e)
             reportImmediateFailure(context, attemptId)
@@ -121,16 +133,21 @@ private object AndroidSmsSender : SmsSender {
         )
     }
 
+    private fun hasSendSmsPermission(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) ==
+            PackageManager.PERMISSION_GRANTED
+
     private fun reportImmediateFailure(
         context: Context,
         attemptId: String,
+        resultCode: Int = SmsManager.RESULT_ERROR_GENERIC_FAILURE,
     ) {
         AndroidSmsForwardingGuard.releaseDuplicate(context, attemptId)
         if (SmsFailureTracker.markFailureOnce(context, attemptId)) {
             ForwardingNotifier.notifySendFailure(
                 context,
                 attemptId,
-                SmsManager.RESULT_ERROR_GENERIC_FAILURE,
+                resultCode,
             )
         }
     }
